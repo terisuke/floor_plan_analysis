@@ -153,7 +153,7 @@ def find_unconnected_rooms(madori, rooms):
                 if room_code not in room_positions:
                     room_positions[room_code] = []
                 room_positions[room_code].append((r, c))
-    #print(f"room_positions: {room_positions}") # 追加: 部屋の位置を確認
+    print(f"room_positions: {room_positions}") # デバッグ出力
 
     # 部屋のペアを総当たりでチェック
     room_codes = list(room_positions.keys())
@@ -161,15 +161,15 @@ def find_unconnected_rooms(madori, rooms):
         for j in range(i + 1, len(room_codes)):
             room1_code = room_codes[i]
             room2_code = room_codes[j]
-            #print(f"Checking connection between {room1_code} and {room2_code}") # 追加
+            print(f"Checking connection between {room1_code} and {room2_code}") # デバッグ出力
             # 部屋1と部屋2が接続されているかチェック
             connected = False
             for pos1 in room_positions[room1_code]:
                 for pos2 in room_positions[room2_code]:
-                    #print(f"  Checking positions: {pos1} and {pos2}") # 追加
+                    print(f"  Checking positions: {pos1} and {pos2}") # デバッグ出力
                     if is_connected(madori, pos1, pos2, room2_code):#第3引数にroom2_codeを追加
                         connected = True
-                        #print(f"  {room1_code} and {room2_code} are connected") # 追加
+                        print(f"  {room1_code} and {room2_code} are connected") # デバッグ出力
                         break  # 1つでも接続されていればOK
                 if connected:
                     break
@@ -179,7 +179,7 @@ def find_unconnected_rooms(madori, rooms):
                 unconnected_rooms.append(
                     (room_positions[room1_code][0], room_positions[room2_code][0])
                 )  # 接続されていないペア
-                #print(f"  {room1_code} and {room2_code} are NOT connected") # 追加
+                print(f"  {room1_code} and {room2_code} are NOT connected") # デバッグ出力
     return unconnected_rooms
 
 def is_connected(madori, pos1, pos2, room2_code):
@@ -206,10 +206,9 @@ def is_connected(madori, pos1, pos2, room2_code):
         for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             new_row, new_col = row + dr, col + dc
             if (0 <= new_row < rows and 0 <= new_col < cols and
-                # (madori[new_row, new_col] != ".") and  # 空きマス以外
                 (new_row, new_col) not in visited
-                and (madori[new_row, new_col] == "co" or madori[new_row, new_col] == room2_code)): # 廊下か目的の部屋コード
-                #print(f"      Adding neighbor: ({new_row}, {new_col}) to queue") # 追加
+                and madori[new_row, new_col] != "."):  # 修正: 空きマス以外なら移動可能
+                #print(f"      Adding neighbor: ({new_row, {new_col}) to queue") # 追加
                 queue.append((new_row, new_col))
     #print(f"    Could not reach {pos2}, returning False") # 追加
     return False
