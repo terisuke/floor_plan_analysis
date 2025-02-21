@@ -124,15 +124,18 @@ def place_corridor(madori, rooms):
     rows, cols = madori.shape
     # 廊下でつなぐべき部屋のペアを見つける
     unconnected_rooms = find_unconnected_rooms(madori, rooms)
+    #print(f"unconnected_rooms: {unconnected_rooms}")
 
-    for room1, room2 in unconnected_rooms:
+    for (room1_row, room1_col), (room2_row, room2_col) in unconnected_rooms:
         # 部屋1と部屋2の間の経路を探索 (A*アルゴリズムなど)
-        path = find_path(madori, room1, room2)
+        path = find_path(madori, (room1_row,room1_col), (room2_row,room2_col))
+        #print(f"path{path}")
 
         if path:
             # 経路に沿って廊下を配置
             for row, col in path:
-                madori[row, col] = "co"
+                if madori[row, col] == ".":  # 他の部屋と重ならないように
+                    madori[row, col] = "co"
 
 def find_unconnected_rooms(madori, rooms):
     """
@@ -150,6 +153,7 @@ def find_unconnected_rooms(madori, rooms):
                 if room_code not in room_positions:
                     room_positions[room_code] = []
                 room_positions[room_code].append((r, c))
+    #print(f"room_positions: {room_positions}") # 追加: 部屋の位置を確認
 
     # 部屋のペアを総当たりでチェック
     room_codes = list(room_positions.keys())
@@ -157,24 +161,28 @@ def find_unconnected_rooms(madori, rooms):
         for j in range(i + 1, len(room_codes)):
             room1_code = room_codes[i]
             room2_code = room_codes[j]
+            #print(f"Checking connection between {room1_code} and {room2_code}") # 追加
             # 部屋1と部屋2が接続されているかチェック
             connected = False
             for pos1 in room_positions[room1_code]:
                 for pos2 in room_positions[room2_code]:
-                    if is_connected(madori, pos1, pos2):
+                    #print(f"  Checking positions: {pos1} and {pos2}") # 追加
+                    if is_connected(madori, pos1, pos2, room2_code):#第3引数にroom2_codeを追加
                         connected = True
+                        #print(f"  {room1_code} and {room2_code} are connected") # 追加
                         break  # 1つでも接続されていればOK
                 if connected:
                     break
+
             if not connected:
-                # 接続されていない場合は、代表点(ここでは左上の点)をペアに追加
+                # 接続されていない場合は、部屋の代表点(ここでは、各部屋の座標リストの最初の点)をペアに追加
                 unconnected_rooms.append(
                     (room_positions[room1_code][0], room_positions[room2_code][0])
                 )  # 接続されていないペア
-
+                #print(f"  {room1_code} and {room2_code} are NOT connected") # 追加
     return unconnected_rooms
 
-def is_connected(madori, pos1, pos2):
+def is_connected(madori, pos1, pos2, room2_code):
     """
     2つの部屋が接続されているか(廊下、または他の部屋経由で)を判定する関数
     """
@@ -182,10 +190,13 @@ def is_connected(madori, pos1, pos2):
     rows, cols = madori.shape
     visited = set()
     queue = [pos1]
+    #print(f"    Starting is_connected check from {pos1} to {pos2}") # 追加
 
     while queue:
         current_pos = queue.pop(0)
+        #print(f"    Current position: {current_pos}, visited: {visited}, queue: {queue}") # 追加
         if current_pos == pos2:
+            #print(f"    Reached {pos2}, returning True") # 追加
             return True
 
         visited.add(current_pos)
@@ -195,10 +206,12 @@ def is_connected(madori, pos1, pos2):
         for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             new_row, new_col = row + dr, col + dc
             if (0 <= new_row < rows and 0 <= new_col < cols and
-                (madori[new_row, new_col] != ".") and  # 空きマス以外
-                (new_row, new_col) not in visited):
+                # (madori[new_row, new_col] != ".") and  # 空きマス以外
+                (new_row, new_col) not in visited
+                and (madori[new_row, new_col] == "co" or madori[new_row, new_col] == room2_code)): # 廊下か目的の部屋コード
+                #print(f"      Adding neighbor: ({new_row}, {new_col}) to queue") # 追加
                 queue.append((new_row, new_col))
-
+    #print(f"    Could not reach {pos2}, returning False") # 追加
     return False
 
 def find_path(madori, start, goal):
