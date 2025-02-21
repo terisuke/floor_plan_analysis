@@ -1,7 +1,7 @@
 import pandas as pd
 import glob  # globモジュールをインポート
 import os
-import madori_generator  # madori_generator.py をインポート
+from madori import core, visualizer  # madori_generator.py をインポート
 
 def load_madori_data(filepath):
     """
@@ -30,5 +30,8 @@ for filepath in file_paths:
 
 # 間取り生成のテスト
 rows, cols = 7, 9  # 例: 7x9マス
-generated_madori = madori_generator.generate_madori_rule_based(rows, cols, madori_generator.rooms)
+generated_madori = core.generate_madori_rule_based(rows, cols)
 print(generated_madori)
+
+# 間取りの可視化(visualizer.pyを使う場合)
+visualizer.plot_madori(generated_madori)
