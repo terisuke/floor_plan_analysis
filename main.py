@@ -1,6 +1,7 @@
 import pandas as pd
 import glob  # globモジュールをインポート
 import os
+import madori_generator  # madori_generator.py をインポート
 
 def load_madori_data(filepath):
     """
@@ -19,7 +20,6 @@ def load_madori_data(filepath):
 data_dir = "data"  # dataディレクトリへのパス
 file_paths = glob.glob(os.path.join(data_dir, "*.csv")) # dataディレクトリ内のすべての.csvファイルを取得
 
-
 for filepath in file_paths:
     print(f"\n--- Processing {filepath} ---")
     df = load_madori_data(filepath)
@@ -27,3 +27,8 @@ for filepath in file_paths:
         print("\nData (First 5 rows):")
         print(df.head())
         print("\nData Shape:", df.shape)
+
+# 間取り生成のテスト
+rows, cols = 7, 9  # 例: 7x9マス
+generated_madori = madori_generator.generate_madori_rule_based(rows, cols, madori_generator.rooms)
+print(generated_madori)
