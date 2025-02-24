@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 # CSV上の部屋コード → config.py上のキー へのマッピング例
 CSV_TO_CONFIG_MAP = {
     "l": "L",    # リビング
-    "d": "D",    # ダイニング (例：'d'をダイニングと解釈)
+    "d": "D",    # ダイニング
     "k": "K",    # キッチン
     "r": "r",    # 部屋
     "t": "t",    # トイレ
@@ -14,7 +14,7 @@ CSV_TO_CONFIG_MAP = {
     "c": "c",    # クローゼット
     "s": "s",    # 階段
     "e": "e",    # 玄関
-    "h": "H",    # ホール (小文字をHに変換)
+    "h": "H",    # ホール
     "co": "co",  # 廊下
     "ut": "ut",  # 脱衣所
     # "ldk": → 必要に応じて L,D,K に分割する等
@@ -26,6 +26,7 @@ def analyze_1f_csv(data_1f_dir="data/1F"):
         print(f"No CSV files found in {data_1f_dir}")
         return
 
+    from collections import defaultdict
     code_blocks = defaultdict(list)
 
     for filepath in csv_files:
@@ -35,7 +36,6 @@ def analyze_1f_csv(data_1f_dir="data/1F"):
         rows = len(grid)
         cols = len(grid[0]) if rows else 0
 
-        # 小文字→大文字変換＆空マス整形
         normalized_grid = []
         for r in range(rows):
             row_list = []
@@ -59,11 +59,12 @@ def analyze_1f_csv(data_1f_dir="data/1F"):
                 if 0 <= nr < rows and 0 <= nc < cols:
                     yield nr, nc
 
-        # BFSで同じコードの塊(ブロック)を探索
+        # BFSで同じコードの塊を探索
         for rr in range(rows):
             for cc in range(cols):
                 if normalized_grid[rr][cc] != "." and not visited[rr][cc]:
                     code = normalized_grid[rr][cc]
+                    from collections import deque
                     queue = deque([(rr, cc)])
                     visited[rr][cc] = True
 

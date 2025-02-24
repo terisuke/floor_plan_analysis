@@ -24,7 +24,7 @@ def find_unconnected_rooms(madori, rooms):
     for r in range(rows):
         for c in range(cols):
             code = madori[r,c]
-            if code!="." and code!="co": # coと.は無視
+            if code!="." and code!="co":
                 if code not in room_positions:
                     room_positions[code] = []
                 room_positions[code].append((r,c))
@@ -120,9 +120,6 @@ def find_path(madori, start, goal):
     return None
 
 def get_neighbors(madori, pos):
-    """
-    '.' だけ通す。 'co' も通したいなら下記条件を if madori[nr,nc] in ('.','co'): に変更
-    """
     rows, cols = madori.shape
     r,c=pos
     neighbors=[]

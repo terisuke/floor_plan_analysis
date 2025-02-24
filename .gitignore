@@ -35,3 +35,6 @@ Thumbs.db
 # CSVデータファイル
 data/1F/*.csv
 data/2F/*.csv
+
+# 学習済みモデルなど
+models/
