@@ -225,28 +225,20 @@ for epoch in range(1, num_epochs+1):
     # 最良モデルを保存
     if avg_loss < best_loss:
         best_loss = avg_loss
-        torch.save(model.state_dict(), "floorplan_vae_best.pth")
+        torch.save(model.state_dict(), "models/floorplan_vae_best.pth")
 
 # 最終モデルも保存
-torch.save(model.state_dict(), "floorplan_vae_final.pth")
+torch.save(model.state_dict(), "models/floorplan_vae_final.pth")
 print("学習が完了しました。")
-
-# main.pyが期待している関数を追加
-def train_random_forest():
-    """
-    ランダムフォレストモデルを訓練する関数
-    """
-    # ここにランダムフォレストの実装を追加
-    pass
 
 def visualize_floor_plan(data, title=None):
     """データの可視化関数"""
     plt.figure(figsize=(10, 10))
-    plt.imshow(data, cmap='tab20')
+    im = plt.imshow(data, cmap='tab20')
     if title:
         plt.title(title)
-    plt.colorbar(ticks=range(len(ROOM_TYPES)), 
-                labels=[k for k in ROOM_TYPES.keys()])
+    plt.colorbar(im, ticks=range(len(ROOM_TYPES)))
+    plt.clim(-0.5, len(ROOM_TYPES) - 0.5)
     plt.grid(True)
     plt.show()
 
