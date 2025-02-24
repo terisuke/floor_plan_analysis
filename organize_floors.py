@@ -26,4 +26,4 @@ def organize_floor_files():
                 shutil.move(source_path, dest_path)
 
 if __name__ == '__main__':
-    organize_floor_files() 
+    organize_floor_files()

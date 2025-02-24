@@ -34,4 +34,4 @@ Thumbs.db
 
 # CSVデータファイル
 data/1F/*.csv 
-data/2F/*.csv 
+data/2F/*.csv

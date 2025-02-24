@@ -6,7 +6,6 @@ def is_space_available(madori, row, col, height, width):
 
 
 def check_adjacency(madori, row, col, height, width, adjacent_to):
-    # ... (既存のコード) ...
     """指定された範囲の周囲に、隣接すべき部屋があるかチェック"""
     if not adjacent_to:
         return True
@@ -25,10 +24,9 @@ def check_adjacency(madori, row, col, height, width, adjacent_to):
 
 
 def find_unconnected_rooms(madori, rooms):
-    # ... (修正済みのコード, is_connected関数を適切に利用) ...
     """
-        廊下でつなぐべき部屋のペアを見つける関数
-        """
+    廊下でつなぐべき部屋のペアを見つける関数
+    """
     rows, cols = madori.shape
     room_positions = {}  # 各部屋の位置を記録 {room_code: [(row, col), ...]}
     unconnected_rooms = []
@@ -55,7 +53,7 @@ def find_unconnected_rooms(madori, rooms):
             for pos1 in room_positions[room1_code]:
                 for pos2 in room_positions[room2_code]:
                     print(f"  Checking positions: {pos1} and {pos2}") # デバッグ出力
-                    if is_connected(madori, pos1, pos2, room2_code):#第3引数にroom2_codeを追加
+                    if is_connected(madori, pos1, pos2, room2_code):  # 第3引数にroom2_codeを追加
                         connected = True
                         print(f"  {room1_code} and {room2_code} are connected") # デバッグ出力
                         break  # 1つでも接続されていればOK
@@ -63,11 +61,11 @@ def find_unconnected_rooms(madori, rooms):
                     break
 
             if not connected:
-                # 接続されていない場合は、部屋の代表点(ここでは、各部屋の座標リストの最初の点)をペアに追加
+                # 接続されていない場合は、部屋の代表点をペアに追加
                 unconnected_rooms.append(
                     (room_positions[room1_code][0], room_positions[room2_code][0])
-                )  # 接続されていないペア
-                print(f"  {room1_code} and {room2_code} are NOT connected") # デバッグ出力
+                )
+                print(f"  {room1_code} and {room2_code} are NOT connected")
     return unconnected_rooms
 
 
@@ -75,37 +73,33 @@ def is_connected(madori, pos1, pos2, room2_code):
     """
     2つの部屋が接続されているか(廊下、または他の部屋経由で)を判定する関数
     """
-    # ... (修正済みのコード) ...
     rows, cols = madori.shape
     visited = set()
     queue = [pos1]
-    #print(f"    Starting is_connected check from {pos1} to {pos2}") # 追加
 
     while queue:
         current_pos = queue.pop(0)
-        #print(f"    Current position: {current_pos}, visited: {visited}, queue: {queue}") # 追加
         if current_pos == pos2:
-            #print(f"    Reached {pos2}, returning True") # 追加
             return True
 
         visited.add(current_pos)
-
         row, col = current_pos
         # 上下左右を探索
         for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             new_row, new_col = row + dr, col + dc
             if (0 <= new_row < rows and 0 <= new_col < cols and
                 (new_row, new_col) not in visited
-                and madori[new_row, new_col] != "."):  # 修正: 空きマス以外なら移動可能
-                #print(f"      Adding neighbor: ({new_row}, {new_col}) to queue") # 追加
+                and madori[new_row, new_col] != "."):  # 空きマス以外なら移動可能
                 queue.append((new_row, new_col))
-    #print(f"    Could not reach {pos2}, returning False") # 追加
+
     return False
 
 
 def find_path(madori, start, goal):
-    # ... (既存のコード) ...
-    """A*アルゴリズムで2点間の最短経路を求める"""
+    """
+    A*アルゴリズムで2点間の最短経路を求める。
+    空きマス('.')を移動可能とみなし、start～goalを結ぶ経路を探索する。
+    """
     rows, cols = madori.shape
 
     def heuristic(a, b):
@@ -119,7 +113,6 @@ def find_path(madori, start, goal):
 
     while open_set:
         current = min(open_set, key=lambda x: fscore.get(x, float('inf')))
-
         if current == goal:
             return reconstruct_path(came_from, current)
 
@@ -137,9 +130,11 @@ def find_path(madori, start, goal):
 
     return None  # 経路が見つからない場合はNoneを返す
 
+
 def get_neighbors(madori, pos):
-    # ... (既存のコード) ...
-    """指定された位置の隣接マス(移動可能なマス)のリストを返す"""
+    """
+    指定された位置の隣接マス(移動可能なマス)のリストを返す
+    """
     rows, cols = madori.shape
     row, col = pos
     neighbors = []
@@ -150,8 +145,8 @@ def get_neighbors(madori, pos):
             neighbors.append((new_row, new_col))
     return neighbors
 
+
 def reconstruct_path(came_from, current):
-    # ... (既存のコード) ...
     """発見した経路を再構築する"""
     path = [current]
     while current in came_from:
