@@ -144,7 +144,7 @@ class VAE(nn.Module):
         h = F.relu(self.enc_conv1(x))
         h = F.relu(self.enc_conv2(h))
         h = F.relu(self.enc_conv3(h))
-        h = h.view(x.size(0), -1)  # フラット化
+        h = h.contiguous().view(x.size(0), -1)
         mu = self.enc_fc_mu(h)
         logvar = self.enc_fc_logvar(h)
         return mu, logvar
