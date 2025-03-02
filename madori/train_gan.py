@@ -12,20 +12,25 @@ from .preprocess import load_and_augment_csvs
 from .evaluate_model import evaluate_generated_layouts
 import torch.nn.functional as F
 
-REQUIRED_ROOMS = ["l", "d", "k", "t", "b"]  # 必須部屋は l, d, k, t, b (小文字)
-OPTIONAL_R = ["r", "r1"]  # r と r1 のいずれかが必要(OR条件) → evaluate時にチェック用
+# -- 必須部屋: l, d, k, t, b (例)
+REQUIRED_ROOMS = ["l", "d", "k", "t", "b"]
+
+# -- r/r1 と c/c1 はOR必須 => それぞれオプションのセットを作る
+OPTION_R = ["r", "r1"]
+OPTION_C = ["c", "c1"]
+# r2,r3,r4, c2,c3,c4 は特に必須チェックしない(オプショナル)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train WGAN-GP for floor plan generation.")
     parser.add_argument("--data_dir", type=str, default="data/1F", help="Data directory with CSVs")
     parser.add_argument("--epochs", type=int, default=500, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size (default changed to 8)")
     parser.add_argument("--noise_dim", type=int, default=64, help="Dim. of noise vector")
     parser.add_argument("--cond_dim", type=int, default=1, help="Dim. of condition vector")
-    parser.add_argument("--lr_g", type=float, default=1e-4, help="Learning rate for generator")
-    parser.add_argument("--lr_d", type=float, default=1e-5, help="Learning rate for discriminator")
+    parser.add_argument("--lr_g", type=float, default=1e-4, help="Learning rate for generator (default=1e-4)")
+    parser.add_argument("--lr_d", type=float, default=1e-4, help="Learning rate for discriminator (default=1e-4)")
     parser.add_argument("--save_interval", type=int, default=10, help="Interval (epochs) to save checkpoint")
-    parser.add_argument("--patience", type=int, default=30, help="patience for early stopping")
+    parser.add_argument("--patience", type=int, default=50, help="patience for early stopping (default=50)")
     return parser.parse_args()
 
 class FloorPlanDataset(Dataset):
@@ -40,6 +45,7 @@ class FloorPlanDataset(Dataset):
         self.label2id = {lab:i for i,lab in enumerate(self.label_list)}
 
         for (lay, _) in layouts:
+            # pad
             padded = self.pad_layout(lay, self.max_size)
             index = np.zeros((self.max_size,self.max_size), dtype=np.int64)
             h, w = lay.shape
@@ -60,7 +66,7 @@ class FloorPlanDataset(Dataset):
 
     def __getitem__(self, idx):
         index_map = self.data[idx]
-        # cond: 適当に非空マス数から計算
+        # cond: 非空マス数でざっくり決定
         nonzero_count = np.count_nonzero(index_map)
         cond_val = np.array([nonzero_count/(self.max_size*self.max_size)], dtype=np.float32)
 
@@ -91,7 +97,7 @@ def gradient_penalty(netD, real_data, fake_data, cond):
     return gradient_pen
 
 class EarlyStopping:
-    def __init__(self, patience=30, min_delta=0.0):
+    def __init__(self, patience=50, min_delta=0.0):
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
@@ -118,6 +124,7 @@ def train_wgan_gp(
     save_interval,
     patience
 ):
+    # データ読み込み & Dataset作成
     layouts = load_and_augment_csvs(data_dir=data_dir, do_augmentation=True)
     dataset = FloorPlanDataset(layouts, max_size=64)
     label_list = dataset.label_list
@@ -125,33 +132,33 @@ def train_wgan_gp(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 実際のラベル数
-    real_out_channels = len(label_list)  # 例: 19など
+    real_out_channels = len(label_list)
     print(f"[INFO] Detected {real_out_channels} unique labels => out_channels for G")
 
-    # Generator/Discriminatorのin_channelsを自動設定
+    # Generator
     netG = Generator(
         noise_dim=noise_dim,
         cond_dim=cond_dim,
         base_channels=64,
-        out_channels=real_out_channels  # 学習データに合わせる
+        out_channels=real_out_channels
     ).to(device)
 
-    # Discriminatorは (layout_ch) + 1(cond_dim=1) の合計チャネルを受け取る
-    # layout_ch = real_out_channels
+    # Discriminator
     netD = Discriminator(
-        in_channels=real_out_channels,  # 生成物 or real_data は real_out_channels
+        in_channels=real_out_channels,
         cond_dim=cond_dim,
         base_channels=64
     ).to(device)
 
-    optG = optim.Adam(netG.parameters(), lr=lr_g, betas=(0.0, 0.9))
-    optD = optim.Adam(netD.parameters(), lr=lr_d, betas=(0.0, 0.9))
+    # 学習率/optimizer設定 (betas=(0.5,0.999))
+    optG = optim.Adam(netG.parameters(), lr=lr_g, betas=(0.5, 0.999))
+    optD = optim.Adam(netD.parameters(), lr=lr_d, betas=(0.5, 0.999))
 
+    # 学習率スケジューラ(ReduceLROnPlateau)は任意
     schedulerG = optim.lr_scheduler.ReduceLROnPlateau(optG, mode='min', factor=0.5, patience=10)
     schedulerD = optim.lr_scheduler.ReduceLROnPlateau(optD, mode='min', factor=0.5, patience=10)
 
-    gp_lambda = 10.0
+    gp_lambda = 5.0  # (10.0→5.0 に変更)
     early_stopper = EarlyStopping(patience=patience, min_delta=0.0)
 
     for ep in range(1, epochs+1):
@@ -163,9 +170,9 @@ def train_wgan_gp(
             cond_val = cond_val.to(device)
             N = onehot.size(0)
 
-            # ============================
-            #   (a) Update Discriminator
-            # ============================
+            # ----------------------------
+            # (a) Update Discriminator
+            # ----------------------------
             netD.zero_grad()
 
             real_score = netD(onehot, cond_val)
@@ -183,9 +190,9 @@ def train_wgan_gp(
             optD.step()
             d_losses.append(d_loss.item())
 
-            # ============================
-            #   (b) Update Generator
-            # ============================
+            # ----------------------------
+            # (b) Update Generator
+            # ----------------------------
             netG.zero_grad()
             noise_z2 = torch.randn(N, noise_dim, device=device)
             gen_data = netG(noise_z2, cond_val)
@@ -214,7 +221,7 @@ def train_wgan_gp(
             torch.save(netG.state_dict(), f"models/generator_ep{ep}.pth")
             torch.save(netD.state_dict(), f"models/discriminator_ep{ep}.pth")
 
-        # 例えば 5エポックごとに簡易評価
+        # 5エポックごとに簡易評価
         if ep % 5 == 0:
             netG.eval()
             with torch.no_grad():
@@ -227,10 +234,13 @@ def train_wgan_gp(
                     fake_logits = netG(z, c)
                     pred = fake_logits.argmax(dim=1).squeeze(0).cpu().numpy()
                     gen_samples.append(pred)
-                # 文字列変換（最低限）
+                # 文字列変換
                 gen_list_str = [arr.astype(str) for arr in gen_samples]
-                # OPTIONAL_Rを使用した評価
-                eval_res = evaluate_generated_layouts(gen_list_str, REQUIRED_ROOMS, OPTIONAL_R)
+
+                # 複数のOR条件 [OPTION_R, OPTION_C]
+                eval_res = evaluate_generated_layouts(gen_list_str,
+                                                      REQUIRED_ROOMS,
+                                                      [OPTION_R, OPTION_C])
                 rooms_ok = eval_res["num_rooms_ok"]
                 constraints_ok = eval_res["num_constraints_ok"]
                 total = eval_res["total_samples"]
@@ -238,7 +248,7 @@ def train_wgan_gp(
 
             print(f"[Eval @ Epoch {ep}]  RoomsOK={rooms_ok}/{total},  ConstrOK={constraints_ok}/{total}")
 
-        # Early Stop
+        # EarlyStopping
         early_stopper.check(total_loss)
         if early_stopper.should_stop:
             print(f"[EarlyStopping] epoch={ep} total_loss={total_loss:.4f} -> Stop training.")

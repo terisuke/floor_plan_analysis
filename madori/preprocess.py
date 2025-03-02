@@ -12,6 +12,8 @@ from PIL import Image
 import random
 
 from .analyze_csv import CSV_TO_CONFIG_MAP
+import torch
+import torch.nn.functional as F
 
 def load_and_augment_csvs(data_dir="data/1F", do_augmentation=True):
     """
@@ -27,8 +29,6 @@ def load_and_augment_csvs(data_dir="data/1F", do_augmentation=True):
             df = pd.read_csv(filepath, header=None).fillna(".")
             grid = df.values
             # csv -> 2Dレイアウト(文字or '.')
-            # CSV_TO_CONFIG_MAPを考慮するなら、ここで変換しても良いが
-            # cGANでは文字ラベルのままOneHot化 or カテゴリID化してもOK
             layout_2d = []
             rows, cols = grid.shape
             for r in range(rows):
@@ -56,8 +56,7 @@ def augment_layout(layout_2d):
     """
     与えられた2Dレイアウト(文字ラベル)に対して回転・フリップ・ノイズ付加などを行い、
     複数のバリエーションを返す。
-    ここでは例として、回転90/180/270、左右反転を生成。
-    ノイズ付加は数セルを'.'に変更するなど簡易例。
+    ここでは例として、回転90/180/270、左右反転/上下反転、微小ノイズ付加。
     """
     aug_list = []
     # 回転
@@ -72,10 +71,9 @@ def augment_layout(layout_2d):
     aug_list.extend([fliplr, flipud])
 
     # 軽微ノイズ付加(ランダムに2セルだけ'.'にする)例
-    # オリジナルをコピーして改変
     noise_copy = layout_2d.copy()
     h, w = noise_copy.shape
-    for _ in range(2):  # 2セルだけランダム改変
+    for _ in range(2):
         rr = random.randint(0, h-1)
         cc = random.randint(0, w-1)
         noise_copy[rr, cc] = "."
@@ -86,11 +84,10 @@ def augment_layout(layout_2d):
 def layout_to_onehot(layout_2d, room_list):
     """
     layout_2d: shape=(H, W), 各セルが部屋ラベル(str)
-    room_list: 全部屋ラベルの一覧(例: ["L","D","K","r","t","B","c","s","e","H","co","ut","."])
+    room_list: 全部屋ラベルの一覧(例: ["l","d","k","r","t","b","c","c1","c2","...","."] etc)
                "." を含む想定
     戻り値: (onehot_tensor: (C,H,W), index_tensor: (H,W))
     """
-    # カテゴリID割当
     label2id = {r: i for i, r in enumerate(room_list)}
     h, w = layout_2d.shape
     index_map = np.zeros((h,w), dtype=np.int64)
@@ -99,14 +96,8 @@ def layout_to_onehot(layout_2d, room_list):
             lab = layout_2d[rr, cc]
             idx = label2id.get(lab, label2id["."])  # 未知の場合"."に
             index_map[rr,cc] = idx
-    # one-hot
     c = len(room_list)
-    # Tensor化
     index_tensor = torch.tensor(index_map, dtype=torch.long)
     onehot = F.one_hot(index_tensor, num_classes=c).float()  # (H,W,C)
     onehot = onehot.permute(2,0,1)  # (C,H,W)
     return onehot, index_tensor
-
-# ======================================================
-# 既存のload_floor_csv_for_trainingは使用しない想定
-# ======================================================

@@ -5,15 +5,16 @@ import torch
 import torchvision.transforms as transforms
 from torchvision.models import inception_v3
 
-# 任意: 今回は従来のFID計算を残しつつ、部屋充足性や制約チェックを追加
-# 下記は元のFID関連
+# FID計算用CSV(未使用の場合は無視)
 real_data_csv = "floorplan_data.csv"
 generated_data_csv = "generated_floorplans.csv"
 
 H, W = 32, 32
 num_classes = 5
 
-# もとのFID計算用
+# -------------------------------
+# FID計算関連 (変わらず)
+# -------------------------------
 def compute_fid_score(real_array, gen_array):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inception = inception_v3(pretrained=True, transform_input=False).to(device)
@@ -54,72 +55,66 @@ def compute_fid_score(real_array, gen_array):
     fid_score = np.sum((mu_real - mu_gen)**2) + np.trace(cov_real + cov_gen - 2 * cov_mean)
     return fid_score
 
-# ================================
-# (1) 部屋の充足率を確認する例
-# ================================
+# -------------------------------
+# 部屋充足チェック
+# -------------------------------
 def check_required_rooms(generated_layout, required_rooms):
     """
-    generated_layout: 2次元配列 (H',W') 各セルが部屋ラベル
-    required_rooms: ["L","D","K","t",...] などの必須部屋コードリスト
+    generated_layout: 2次元配列 (H',W') 各セルが部屋ラベル(str)
+    required_rooms: ["l","d","k","t","b"] のように絶対必要な部屋リスト
     戻り値: bool (全て含まれていればTrue)
     """
     found_rooms = set(generated_layout.reshape(-1))
-    # '.' や空白は部屋とみなさない
-    # すべて必須部屋が found_rooms に含まれているかをチェック
     for r in required_rooms:
         if r not in found_rooms:
             return False
     return True
 
-# REQUIRED_ROOMSは全て含む & OPTIONAL_Rのどれか一つでも含む というロジック
-def check_required_rooms_with_r_or_r1(layout_2d, must_all, r_or_r1):
+def check_multiple_or_rooms(generated_layout, or_room_sets):
     """
-    layout_2d: 2次元配列の間取り
-    must_all: 必須部屋リスト（全て含む必要あり）
-    r_or_r1: 任意部屋リスト（いずれか1つ以上含む必要あり）
-    戻り値: bool (条件を満たせばTrue)
+    generated_layout: 2次元配列
+    or_room_sets: 複数の OR 条件をリストで指定する
+      例: [ ["r","r1"], ["c","c1"] ] 
+         => (r or r1) かつ (c or c1) の両方が満たされる必要がある
+    戻り値: bool
     """
-    found = set(layout_2d.reshape(-1))
-    
-    # 1) must_all の部屋はすべて含まれているか
-    for room in must_all:
-        if room not in found:
+    found = set(generated_layout.reshape(-1))
+    for or_rooms in or_room_sets:
+        # or_rooms のいずれか一つが found にあればOK
+        if not any(r in found for r in or_rooms):
             return False
-            
-    # 2) r_or_r1 のどちらかが含まれているか
-    if not any(r in found for r in r_or_r1):
-        return False
-        
     return True
 
-# ================================
-# (2) 接続性などの制約をチェックする例
-# ================================
+# -------------------------------
+# 接続性などの制約
+# -------------------------------
 def check_connectivity_constraints(generated_layout):
     """
-    例として、部屋が孤立していないか確認。
-    ここでは簡易的に、「ある部屋が存在するなら、その周囲に'.'または同じ部屋ラベル以外でも通路('co')があるか」を見る。
-    より厳密には BFS/DFS で部屋全体を探査し、孤立していないかなどを確かめる。
-    戻り値: bool (OKならTrue)
+    例: co が全体の5%未満ならNG、など簡単なチェック
     """
-    # ここでは省略し、必須部屋があってかつ半分以上のセルが何らかの通路か連結マスであればOK等の簡単な例:
     h, w = generated_layout.shape
     total_cells = h*w
-    # co(廊下)セル数が極端に少ないとNG、としてみる
     co_count = np.sum(generated_layout == 'co')
     if co_count < total_cells*0.05:
         return False
     return True
 
-# ================================
-# メイン評価関数例
-# ================================
-def evaluate_generated_layouts(gen_array, required_rooms, optional_rooms=None):
+# -------------------------------
+# メイン評価関数
+# -------------------------------
+def evaluate_generated_layouts(gen_array, required_rooms, or_room_sets=None):
     """
-    gen_array: [N, H', W'] 生成レイアウトのバッチ
-    required_rooms: 必須部屋リスト e.g. ["l", "d","k","b","t"] など
-    optional_rooms: OR条件の部屋リスト e.g. ["r", "r1"] など（デフォルトはNone）
-    戻り値: dict に各種指標をまとめる
+    gen_array: list of 2D layouts or (N, H, W) np.array
+    required_rooms: 絶対必要な部屋リスト (例: ["l","d","k","t","b"])
+    or_room_sets: OR条件の部屋集合を複数指定
+      例: [ ["r","r1"], ["c","c1"] ]
+         => (r or r1) かつ (c or c1) が必要
+    戻り値: dict
+      {
+        "total_samples": int,
+        "num_rooms_ok": int,
+        "num_constraints_ok": int
+      }
     """
     results = {
         "total_samples": len(gen_array),
@@ -128,27 +123,32 @@ def evaluate_generated_layouts(gen_array, required_rooms, optional_rooms=None):
     }
 
     for layout in gen_array:
-        # layoutは2次元の場合: shape=(H', W')
-        # np.unique()等でラベル確認
-        # (1) 必須部屋確認
-        if optional_rooms:
-            # 必須部屋+オプション部屋のいずれかを含む
-            if check_required_rooms_with_r_or_r1(layout, required_rooms, optional_rooms):
-                results["num_rooms_ok"] += 1
+        # (1) 必須部屋チェック
+        if not check_required_rooms(layout, required_rooms):
+            # ダメなら部屋OKにカウントしない
+            pass
         else:
-            # 従来の必須部屋のみのチェック
-            if check_required_rooms(layout, required_rooms):
+            # 必須部屋はOK => あとは OR 部屋のチェック
+            if or_room_sets is not None:
+                # すべてのORセットを満たすか？
+                if check_multiple_or_rooms(layout, or_room_sets):
+                    # OK
+                    results["num_rooms_ok"] += 1
+            else:
+                # OR条件がない場合はこれで部屋OK
                 results["num_rooms_ok"] += 1
-                
-        # (2) 接続/制約確認
+
+        # (2) 接続・制約チェック
         if check_connectivity_constraints(layout):
             results["num_constraints_ok"] += 1
 
     return results
 
-
+# -------------------------------
+# (以下、スクリプト実行時: FID計算サンプル)
+# -------------------------------
 if __name__ == "__main__":
-    # 例: FID計算
+    # 例: FIDを計算
     try:
         real_df = pd.read_csv(real_data_csv, header=None)
         gen_df  = pd.read_csv(generated_data_csv, header=None)
@@ -161,28 +161,11 @@ if __name__ == "__main__":
     except Exception as e:
         print("FIDスコア計算時のエラー:", e)
 
-    # 例: 必須の部屋が ["L","D","K","B","t","H","e"] だとして評価
-    # CSVでの文字ラベルに合わせてる場合 (string)
-    required_rooms = ["l","d","k","b","t","h","e"]
-    optional_rooms = ["r", "r1"]  # どちらか一つは必要
+    # 例: 必須部屋 & ORセットの評価
+    required_rooms_ex = ["l","d","k","b","t"]  # たとえば
+    or_sets_ex = [ ["r","r1"], ["c","c1"] ]
 
-    # ここではダミー例: gen_arrayを使って評価
-    # gen_arrayが int型なら decodeが必要かもしれません
-    # いったんstring想定として
-    if len(gen_array.shape) == 3:
-        # N,H,W
-        # shapeを (N,H,W) -> list of (H,W)
-        gen_list = []
-        for i in range(gen_array.shape[0]):
-            # 文字列ラベル想定であれば astype(str) する必要がある
-            # ここでは簡易的にchr()で変換するなど
-            layout_2d = gen_array[i]
-            # もとのラベルがintならマップが必要
-            # ここでは省略
-            gen_list.append(layout_2d)
-        # 評価 - optional_roomsも使用
-        eval_results = evaluate_generated_layouts(gen_list, required_rooms, optional_rooms)
-        print(f"部屋充足OK: {eval_results['num_rooms_ok']} / {eval_results['total_samples']}")
-        print(f"制約OK   : {eval_results['num_constraints_ok']} / {eval_results['total_samples']}")
-    else:
-        print("gen_array shape が想定外です。")
+    # ダミーの生成結果を仮定
+    # gen_array_ex = [ ... ]
+    # evaluate_results = evaluate_generated_layouts(gen_array_ex, required_rooms_ex, or_sets_ex)
+    # print(evaluate_results)
