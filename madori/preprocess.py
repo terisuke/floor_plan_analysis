@@ -2,84 +2,111 @@
 madori/preprocess.py
 
 CSVの間取りデータを読み込み、機械学習用の特徴量・ラベルを生成するモジュール。
+不定形のCSVを取り扱いつつ、データ増強 (回転・フリップなど) を行う。
 """
-
 import os
 import glob
 import pandas as pd
 import numpy as np
+from PIL import Image
+import random
+
 from .analyze_csv import CSV_TO_CONFIG_MAP
 
-def load_floor_csv_for_training(data_dir="data/1F"):
+def load_and_augment_csvs(data_dir="data/1F", do_augmentation=True):
     """
-    data_dir 以下のCSVファイルをすべて走査し、
-    それぞれを (特徴量X, ラベルy) の形に変換して返す。
-    ここでは例として、各マスの部屋コードを one-hot 化したベクトルを特徴量とする簡易例。
+    data_dir 以下のCSVファイルをすべて走査し、それぞれを読み込み:
+      - 不定形のまま取得
+      - データ増強(回転,フリップ,ノイズ付加など)を行う(オプション)
+    戻り値: List[ (np.array(レイアウト2D), filename) ]
     """
     csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
-    X = []
-    y = []  # ラベルが何を指すかは問題設定により変わる
-
-    # 部屋コードを一意にリスト化
-    room_codes = list(CSV_TO_CONFIG_MAP.values())  # ["L","D","K","r","t","B","c","s","e","H","co","ut"]
-    code_to_idx = {rc:i for i,rc in enumerate(room_codes)}
-
+    layouts = []
     for filepath in csv_files:
-        df = pd.read_csv(filepath, header=None).fillna(".")
-        grid = df.values
-        rows, cols = grid.shape
+        try:
+            df = pd.read_csv(filepath, header=None).fillna(".")
+            grid = df.values
+            # csv -> 2Dレイアウト(文字or '.')
+            # CSV_TO_CONFIG_MAPを考慮するなら、ここで変換しても良いが
+            # cGANでは文字ラベルのままOneHot化 or カテゴリID化してもOK
+            layout_2d = []
+            rows, cols = grid.shape
+            for r in range(rows):
+                row_list = []
+                for c in range(cols):
+                    val = str(grid[r][c]).strip().lower()
+                    if val in CSV_TO_CONFIG_MAP:
+                        row_list.append(CSV_TO_CONFIG_MAP[val])
+                    else:
+                        row_list.append(".")
+                layout_2d.append(row_list)
+            layout_2d = np.array(layout_2d, dtype=object)
+            layouts.append((layout_2d, filepath))
 
-        # グリッド全体を flatten
-        flattened = []
-        for r in range(rows):
-            for c in range(cols):
-                val = str(grid[r][c]).strip().lower()
-                if val in CSV_TO_CONFIG_MAP:
-                    code = CSV_TO_CONFIG_MAP[val]  # 例: 'l' -> 'L'
-                else:
-                    code = "."
-                # one-hot vector化 or 数値ID化
-                if code == ".":
-                    idx = -1  # 空きを -1 とする
-                else:
-                    idx = code_to_idx.get(code, -1)
-                flattened.append(idx)
-        # flattened は [マス数] の長さをもつベクトル
-        # ここでは簡単に "Xとしてflattened全体" "yとして???(部屋の数など？)" の例
-        # デモとして X にそのまま flattened を入れる
-        X.append(flattened)
+            # データ増強
+            if do_augmentation:
+                aug_layouts = augment_layout(layout_2d)
+                for aug_lay in aug_layouts:
+                    layouts.append((aug_lay, filepath+"(aug)"))
+        except Exception as e:
+            print(f"Warning: {filepath} 読み込み失敗: {e}")
+    return layouts
 
-        # ラベルy: 例として「総マス数に占める 'co'(廊下) の割合」などを回帰問題にする例
-        # （本来は間取りの"良し悪しスコア"などがあればそれをターゲットにしても良い）
-        corridor_count = flattened.count(code_to_idx.get("co", -999))  # "co" のID
-        ratio_co = corridor_count / len(flattened)
-        y.append(ratio_co)
-
-    X = np.array(X, dtype=object)  # 各サンプル毎に長さが異なる可能性があるので、object配列
-    y = np.array(y)
-    return X, y, room_codes
-
-def vector_to_madori(vector, room_codes, rows=7, cols=9):
+def augment_layout(layout_2d):
     """
-    学習・推論の結果得られたベクトル -> 2次元間取りへ変換する例。
-    vector: [rows*cols] の長さを想定 (部屋コードID)
-    room_codes: 順序付きの部屋コード一覧 (train時に用いたもの)
+    与えられた2Dレイアウト(文字ラベル)に対して回転・フリップ・ノイズ付加などを行い、
+    複数のバリエーションを返す。
+    ここでは例として、回転90/180/270、左右反転を生成。
+    ノイズ付加は数セルを'.'に変更するなど簡易例。
     """
-    madori = np.full((rows, cols), ".", dtype=object)
-    idx_to_code = {i:rc for i,rc in enumerate(room_codes)}
-    k = 0
-    for r in range(rows):
-        for c in range(cols):
-            code_id = vector[k]
-            k+=1
-            if code_id >= 0 and code_id in idx_to_code:
-                madori[r,c] = idx_to_code[code_id]
-            else:
-                madori[r,c] = "."
-    return madori
+    aug_list = []
+    # 回転
+    rot90 = np.rot90(layout_2d, k=1)
+    rot180 = np.rot90(layout_2d, k=2)
+    rot270 = np.rot90(layout_2d, k=3)
+    aug_list.extend([rot90, rot180, rot270])
 
-if __name__ == "__main__":
-    # テスト実行
-    X, y, rcodes = load_floor_csv_for_training("data/1F")
-    print("Loaded training data shape:", X.shape, y.shape)
-    print("Room codes used:", rcodes)
+    # 左右反転
+    fliplr = np.fliplr(layout_2d)
+    flipud = np.flipud(layout_2d)
+    aug_list.extend([fliplr, flipud])
+
+    # 軽微ノイズ付加(ランダムに2セルだけ'.'にする)例
+    # オリジナルをコピーして改変
+    noise_copy = layout_2d.copy()
+    h, w = noise_copy.shape
+    for _ in range(2):  # 2セルだけランダム改変
+        rr = random.randint(0, h-1)
+        cc = random.randint(0, w-1)
+        noise_copy[rr, cc] = "."
+    aug_list.append(noise_copy)
+
+    return aug_list
+
+def layout_to_onehot(layout_2d, room_list):
+    """
+    layout_2d: shape=(H, W), 各セルが部屋ラベル(str)
+    room_list: 全部屋ラベルの一覧(例: ["L","D","K","r","t","B","c","s","e","H","co","ut","."])
+               "." を含む想定
+    戻り値: (onehot_tensor: (C,H,W), index_tensor: (H,W))
+    """
+    # カテゴリID割当
+    label2id = {r: i for i, r in enumerate(room_list)}
+    h, w = layout_2d.shape
+    index_map = np.zeros((h,w), dtype=np.int64)
+    for rr in range(h):
+        for cc in range(w):
+            lab = layout_2d[rr, cc]
+            idx = label2id.get(lab, label2id["."])  # 未知の場合"."に
+            index_map[rr,cc] = idx
+    # one-hot
+    c = len(room_list)
+    # Tensor化
+    index_tensor = torch.tensor(index_map, dtype=torch.long)
+    onehot = F.one_hot(index_tensor, num_classes=c).float()  # (H,W,C)
+    onehot = onehot.permute(2,0,1)  # (C,H,W)
+    return onehot, index_tensor
+
+# ======================================================
+# 既存のload_floor_csv_for_trainingは使用しない想定
+# ======================================================
