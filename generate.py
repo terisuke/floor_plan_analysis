@@ -28,6 +28,26 @@ def crop_layout(layout, height, width):
     """生成された間取り図を指定サイズにクロップ"""
     return layout[:height, :width]
 
+def auto_trim_layout(layout_2d):
+    """
+    layout_2d: 2次元 numpy配列 (shape=(H,W))
+    '.' (ドット) は空白とみなし、上下左右にある空白行・列を切り詰める。
+    完全に空白な場合はそのまま返す。
+    """
+    import numpy as np
+    
+    # True/Falseマスクで、各行または列に少なくとも1つの空白以外セルがあるか判定
+    row_has_room = np.any(layout_2d != ".", axis=1)
+    col_has_room = np.any(layout_2d != ".", axis=0)
+    
+    # 全て空白なら、そのまま返す
+    if not np.any(row_has_room) or not np.any(col_has_room):
+        return layout_2d
+    
+    # row_has_roomがTrueの行だけ取り出し → その中で col_has_roomがTrueの列だけ取り出す
+    trimmed = layout_2d[row_has_room][:, col_has_room]
+    return trimmed
+
 def main():
     st.title("Floor Plan Generator (cGAN)")
 
@@ -49,6 +69,10 @@ def main():
     
     st.sidebar.write("ノイズ次元:", NOISE_DIM)
     st.sidebar.write("条件次元:", COND_DIM)
+
+    # 自動トリミングのチェックボックス
+    auto_trim = st.sidebar.checkbox("自動トリミングを行う", value=False, 
+                                  help="生成後に外周の空白('.'のみの行・列)を切り詰めます。")
 
     # レイアウトサイズの入力
     col1, col2 = st.columns(2)
@@ -77,8 +101,14 @@ def main():
                 cond = torch.tensor([[cond_val]], dtype=torch.float, device=device)
                 fake_logits = netG(z, cond)
                 pred = fake_logits.argmax(dim=1).squeeze(0).cpu().numpy()
-                # 指定サイズにクロップ
+                
+                # まずは指定サイズ (height, width) にクロップ
                 cropped_pred = crop_layout(pred, height, width)
+
+                # もし「自動トリミング」がONなら、さらに外周の空白を除去
+                if auto_trim:
+                    cropped_pred = auto_trim_layout(cropped_pred)
+                
                 results.append(cropped_pred)
 
         st.success("生成完了!")

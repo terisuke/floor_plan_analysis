@@ -9,7 +9,11 @@ import random
 
 from .gan import Generator, Discriminator
 from .preprocess import load_and_augment_csvs
+from .evaluate_model import evaluate_generated_layouts
 import torch.nn.functional as F
+
+# 必須部屋のリスト
+REQUIRED_ROOMS = ["r", "r1", "r2", "r3", "r4", "L", "D", "K", "t", "B"]  # 例: 必須部屋
 
 #==================================================================
 # 1) 引数パース
@@ -21,7 +25,7 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
     parser.add_argument("--noise_dim", type=int, default=64, help="Dim. of noise vector")
     parser.add_argument("--cond_dim", type=int, default=1, help="Dim. of condition vector")
-    parser.add_argument("--out_channels", type=int, default=13, help="Output channels for generator")
+    parser.add_argument("--out_channels", type=int, default=18, help="Output channels for generator")
     parser.add_argument("--lr_g", type=float, default=1e-4, help="Learning rate for generator")
     parser.add_argument("--lr_d", type=float, default=1e-5, help="Learning rate for discriminator")
     parser.add_argument("--save_interval", type=int, default=10, help="Interval (epochs) to save checkpoint")
@@ -156,11 +160,11 @@ def train_wgan_gp(
         noise_dim=noise_dim,
         cond_dim=cond_dim,
         base_channels=64,
-        out_channels=out_channels
+        out_channels=18  # 17+1に合わせる（Discriminatorが処理可能なチャンネル数）
     ).to(device)
 
     netD = Discriminator(
-        in_channels=out_channels,
+        in_channels=17,  # 実際のデータチャンネル数(18)-条件チャネル数(1)=17
         cond_dim=cond_dim,
         base_channels=64
     ).to(device)
@@ -243,6 +247,37 @@ def train_wgan_gp(
             os.makedirs("models", exist_ok=True)
             torch.save(netG.state_dict(), f"models/generator_ep{ep}.pth")
             torch.save(netD.state_dict(), f"models/discriminator_ep{ep}.pth")
+
+        # ---- エポック終了時に評価 ----
+        # 例えば 5エポック毎などで評価
+        if ep % 5 == 0:
+            netG.eval()
+            with torch.no_grad():
+                N_eval = 8  # 評価用に8枚だけ生成
+                gen_samples = []
+                
+                for _ in range(N_eval):
+                    z = torch.randn(1, noise_dim, device=device)
+                    c = torch.rand(1, cond_dim, device=device)  # 適当なcond
+                    fake_logits = netG(z, c)
+                    pred = fake_logits.argmax(dim=1).squeeze(0).cpu().numpy()
+                    gen_samples.append(pred)
+                
+                # evaluate_generated_layoutsは "文字ラベル" 想定の場合があるので
+                # とりあえず "." などに相当するIDだけ変換 or 文字化
+                # ここでは最低限: int→str に変換して渡す簡易例
+                gen_list_str = [arr.astype(str) for arr in gen_samples]
+                
+                eval_res = evaluate_generated_layouts(gen_list_str, REQUIRED_ROOMS)
+                rooms_ok = eval_res["num_rooms_ok"]
+                constraints_ok = eval_res["num_constraints_ok"]
+                total = eval_res["total_samples"]
+
+            netG.train()
+            
+            # 結果を表示
+            print(f"[Eval @ Epoch {ep}]"
+                  f"  RoomsOK={rooms_ok}/{total},  ConstrOK={constraints_ok}/{total}")
 
         # Early Stop 監視
         early_stopper.check(total_loss)

@@ -12,7 +12,7 @@ from .gan import Generator
 # 定数を直接定義
 NOISE_DIM = 64
 COND_DIM = 1
-OUT_CHANNELS = 13
+OUT_CHANNELS = 19
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
