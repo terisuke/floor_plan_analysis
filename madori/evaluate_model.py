@@ -71,6 +71,27 @@ def check_required_rooms(generated_layout, required_rooms):
             return False
     return True
 
+# REQUIRED_ROOMSは全て含む & OPTIONAL_Rのどれか一つでも含む というロジック
+def check_required_rooms_with_r_or_r1(layout_2d, must_all, r_or_r1):
+    """
+    layout_2d: 2次元配列の間取り
+    must_all: 必須部屋リスト（全て含む必要あり）
+    r_or_r1: 任意部屋リスト（いずれか1つ以上含む必要あり）
+    戻り値: bool (条件を満たせばTrue)
+    """
+    found = set(layout_2d.reshape(-1))
+    
+    # 1) must_all の部屋はすべて含まれているか
+    for room in must_all:
+        if room not in found:
+            return False
+            
+    # 2) r_or_r1 のどちらかが含まれているか
+    if not any(r in found for r in r_or_r1):
+        return False
+        
+    return True
+
 # ================================
 # (2) 接続性などの制約をチェックする例
 # ================================
@@ -93,10 +114,11 @@ def check_connectivity_constraints(generated_layout):
 # ================================
 # メイン評価関数例
 # ================================
-def evaluate_generated_layouts(gen_array, required_rooms):
+def evaluate_generated_layouts(gen_array, required_rooms, optional_rooms=None):
     """
     gen_array: [N, H', W'] 生成レイアウトのバッチ
-    required_rooms: 必須部屋リスト e.g. ["L", "D","K","B","t","e","H"] など
+    required_rooms: 必須部屋リスト e.g. ["l", "d","k","b","t"] など
+    optional_rooms: OR条件の部屋リスト e.g. ["r", "r1"] など（デフォルトはNone）
     戻り値: dict に各種指標をまとめる
     """
     results = {
@@ -109,8 +131,15 @@ def evaluate_generated_layouts(gen_array, required_rooms):
         # layoutは2次元の場合: shape=(H', W')
         # np.unique()等でラベル確認
         # (1) 必須部屋確認
-        if check_required_rooms(layout, required_rooms):
-            results["num_rooms_ok"] += 1
+        if optional_rooms:
+            # 必須部屋+オプション部屋のいずれかを含む
+            if check_required_rooms_with_r_or_r1(layout, required_rooms, optional_rooms):
+                results["num_rooms_ok"] += 1
+        else:
+            # 従来の必須部屋のみのチェック
+            if check_required_rooms(layout, required_rooms):
+                results["num_rooms_ok"] += 1
+                
         # (2) 接続/制約確認
         if check_connectivity_constraints(layout):
             results["num_constraints_ok"] += 1
@@ -134,7 +163,8 @@ if __name__ == "__main__":
 
     # 例: 必須の部屋が ["L","D","K","B","t","H","e"] だとして評価
     # CSVでの文字ラベルに合わせてる場合 (string)
-    required_rooms = ["L","D","K","B","t","H","e"]
+    required_rooms = ["l","d","k","b","t","h","e"]
+    optional_rooms = ["r", "r1"]  # どちらか一つは必要
 
     # ここではダミー例: gen_arrayを使って評価
     # gen_arrayが int型なら decodeが必要かもしれません
@@ -150,8 +180,8 @@ if __name__ == "__main__":
             # もとのラベルがintならマップが必要
             # ここでは省略
             gen_list.append(layout_2d)
-        # 評価
-        eval_results = evaluate_generated_layouts(gen_list, required_rooms)
+        # 評価 - optional_roomsも使用
+        eval_results = evaluate_generated_layouts(gen_list, required_rooms, optional_rooms)
         print(f"部屋充足OK: {eval_results['num_rooms_ok']} / {eval_results['total_samples']}")
         print(f"制約OK   : {eval_results['num_constraints_ok']} / {eval_results['total_samples']}")
     else:

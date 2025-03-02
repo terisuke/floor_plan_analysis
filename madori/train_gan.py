@@ -12,7 +12,8 @@ from .preprocess import load_and_augment_csvs
 from .evaluate_model import evaluate_generated_layouts
 import torch.nn.functional as F
 
-REQUIRED_ROOMS = ["r", "r1", "r2", "r3", "r4", "L", "D", "K", "t", "B"]  # 例
+REQUIRED_ROOMS = ["l", "d", "k", "t", "b"]  # 必須部屋は l, d, k, t, b (小文字)
+OPTIONAL_R = ["r", "r1"]  # r と r1 のいずれかが必要(OR条件) → evaluate時にチェック用
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train WGAN-GP for floor plan generation.")
@@ -228,7 +229,8 @@ def train_wgan_gp(
                     gen_samples.append(pred)
                 # 文字列変換（最低限）
                 gen_list_str = [arr.astype(str) for arr in gen_samples]
-                eval_res = evaluate_generated_layouts(gen_list_str, REQUIRED_ROOMS)
+                # OPTIONAL_Rを使用した評価
+                eval_res = evaluate_generated_layouts(gen_list_str, REQUIRED_ROOMS, OPTIONAL_R)
                 rooms_ok = eval_res["num_rooms_ok"]
                 constraints_ok = eval_res["num_constraints_ok"]
                 total = eval_res["total_samples"]

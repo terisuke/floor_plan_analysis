@@ -5,23 +5,23 @@ from collections import defaultdict, deque
 
 # CSV上の部屋コード → config.py上のキー へのマッピング例
 CSV_TO_CONFIG_MAP = {
-    "l": "L",    # リビング
-    "d": "D",    # ダイニング
-    "k": "K",    # キッチン
+    "l": "l",    # リビング
+    "d": "d",    # ダイニング
+    "k": "k",    # キッチン
     "r": "r",    # 部屋
     "r1": "r1",  # 部屋1
     "r2": "r2",  # 部屋2
     "r3": "r3",  # 部屋3
     "r4": "r4",  # 部屋4
     "t": "t",    # トイレ
-    "b": "B",    # 風呂
+    "b": "b",    # 風呂
     "c": "c",    # クローゼット
     "s": "s",    # 階段
     "e": "e",    # 玄関
-    "h": "H",    # ホール
+    "h": "h",    # ホール
     "co": "co",  # 廊下
     "ut": "ut",  # 脱衣所
-    # "ldk": → 必要に応じて L,D,K に分割する等
+    # "ldk": → 必要に応じて l,d,k に分割する等
 }
 
 def analyze_1f_csv(data_1f_dir="data/1F"):
