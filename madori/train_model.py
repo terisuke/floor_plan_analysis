@@ -1,5 +1,3 @@
-# train_model.py
-
 import numpy as np
 import pandas as pd
 import torch
@@ -38,16 +36,16 @@ ROOM_TYPES = {
     '': 0,  # 空白
     'r': 1,  # 廊下
     'b': 2,  # 浴室
-    'ut': 3,  # ユーティリティ
+    'ut': 3, # ユーティリティ
     's': 4,  # 収納
-    'co': 5,  # 玄関
+    'co': 5, # 玄関
     't': 6,  # トイレ
     'c': 7,  # クローゼット
     'k': 8,  # キッチン
     'd': 9,  # ダイニング
-    'l': 10,  # リビング
-    'H': 11,  # ホール
-    'e': 12,  # エントランス
+    'l': 10, # リビング
+    'H': 11, # ホール
+    'e': 12, # エントランス
 }
 
 def process_csv(file):
@@ -80,6 +78,7 @@ for file in csv_files:
         
         # リサイズ
         img = Image.fromarray(padded_data.astype('float32'))
+        # Pillow 9.x 以降: Image.Resampling.NEAREST
         resized = img.resize((TARGET_W, TARGET_H), Image.Resampling.NEAREST)
         processed_data.append(np.array(resized))
         
@@ -113,7 +112,7 @@ indexed_grid = np.vectorize(class_to_idx.get)(data_array)
 # one-hotエンコーディング: shape (N, H, W) -> (N, H, W, C) -> (N, C, H, W)
 indexed_tensor = torch.tensor(indexed_grid, dtype=torch.long)
 onehot_tensor = F.one_hot(indexed_tensor, num_classes=num_classes).float()
-onehot_tensor = onehot_tensor.permute(0, 3, 1, 2)  # (N, C, H, W) に変換
+onehot_tensor = onehot_tensor.permute(0, 3, 1, 2)  # (N, C, H, W)
 
 # 学習用データセットとデータローダーを作成
 dataset = TensorDataset(onehot_tensor, indexed_tensor)  # 入力(one-hot)とターゲット(クラスインデックス)のペア
@@ -126,18 +125,23 @@ class VAE(nn.Module):
         self.in_channels = in_channels
         self.latent_dim = latent_dim
         # Encoder: 畳み込み層で特徴を抽出し、全結合層で潜在変数の平均(mu)と対数分散(logvar)を出力
-        self.enc_conv1 = nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1)   # 出力: 16x16 (入力32x32想定)
+        self.enc_conv1 = nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1)   # 出力: 16x16 (入力64x64想定を2回縮小で16x16?)
         self.enc_conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1)            # 出力: 8x8
         self.enc_conv3 = nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1)           # 出力: 4x4
         # 4x4サイズ・チャネル128の特徴マップをフラットにして潜在ベクトルへ
-        self.enc_fc_mu = nn.Linear(128 * (H//8) * (W//8), latent_dim)      # mu出力
-        self.enc_fc_logvar = nn.Linear(128 * (H//8) * (W//8), latent_dim)  # logvar出力
+        self.enc_fc_mu = nn.Linear(128 * (H//8) * (W//8), latent_dim)
+        self.enc_fc_logvar = nn.Linear(128 * (H//8) * (W//8), latent_dim)
 
         # Decoder: 全結合層で特徴マップに復元し、転置畳み込みで元の画像サイズ(CxHxW)に生成
         self.dec_fc = nn.Linear(latent_dim, 128 * (H//8) * (W//8))
         self.dec_deconv1 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1)   # 出力: 8x8
         self.dec_deconv2 = nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1)    # 出力: 16x16
-        self.dec_deconv3 = nn.ConvTranspose2d(32, in_channels, kernel_size=4, stride=2, padding=1)  # 出力: 32x32
+        self.dec_deconv3 = nn.ConvTranspose2d(32, in_channels, kernel_size=4, stride=2, padding=1)  # 出力: 32x32 (さらにもう1回必要？64x64ならもう一層追加要)
+
+        # 追加: 64x64に合わせるならさらに一層
+        # ただし現在の設定: conv3で4x4, deconv3で8x8->16x16->32x32 となるので1段足りない
+        # 例としてもう1層追加:
+        self.dec_deconv4 = nn.ConvTranspose2d(in_channels, in_channels, kernel_size=4, stride=2, padding=1)
 
     def encode(self, x):
         # Encoder: 入力xを畳み込みで特徴抽出しflattenしてmu, logvarを計算
@@ -156,15 +160,16 @@ class VAE(nn.Module):
             eps = torch.randn_like(std)
             return mu + eps * std
         else:
-            return mu  # 評価時は分散項を考慮しない（平均のみ）
+            return mu
 
     def decode(self, z):
         # Decoder: 潜在ベクトルzから元の画像次元にデコード（出力は各ピクセルのカテゴリlogit）
         h = F.relu(self.dec_fc(z))
-        h = h.view(z.size(0), 128, H//8, W//8)  # 4x4x128のテンソルに変形（H//8=4, W//8=4）
-        h = F.relu(self.dec_deconv1(h))
-        h = F.relu(self.dec_deconv2(h))
-        logits = self.dec_deconv3(h)  # 最終出力（活性化関数は適用しない：クロスエントロピーでlogitsを使用）
+        h = h.view(z.size(0), 128, H//8, W//8)  # (N,128,8,8) -> 本来4x4だと想定したが、64x64を何回縮小したかで要調整
+        h = F.relu(self.dec_deconv1(h))  # => 16x16
+        h = F.relu(self.dec_deconv2(h))  # => 32x32
+        h = F.relu(self.dec_deconv3(h))  # => 64x64にしたい => ここで32x32 -> 64x64
+        logits = self.dec_deconv4(h)     # => (N, in_channels, 64,64)
         return logits
 
     def forward(self, x):
@@ -214,12 +219,12 @@ for epoch in range(1, num_epochs+1):
     avg_recon = total_recon_loss/len(loader)
     avg_kld = total_kld_loss/len(loader)
     
-    if epoch % 10 == 0:  # 10エポックごとに詳細を表示
+    if epoch % 10 == 0:
         print(f"Epoch {epoch}/{num_epochs}")
         print(f"  Total Loss: {avg_loss:.4f}")
         print(f"  Recon Loss: {avg_recon:.4f}")
         print(f"  KLD Loss: {avg_kld:.4f}")
-    else:  # それ以外は簡易表示
+    else:
         print(f"Epoch {epoch}/{num_epochs} - Loss: {avg_loss:.4f}")
     
     # 最良モデルを保存

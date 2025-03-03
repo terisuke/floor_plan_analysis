@@ -31,6 +31,9 @@ def parse_args():
     parser.add_argument("--lr_d", type=float, default=1e-4, help="Learning rate for discriminator (default=1e-4)")
     parser.add_argument("--save_interval", type=int, default=10, help="Interval (epochs) to save checkpoint")
     parser.add_argument("--patience", type=int, default=50, help="patience for early stopping (default=50)")
+    # 新たに追加: スペクトル正規化 / ミニバッチ識別フラグ
+    parser.add_argument("--use_spectral_norm", action="store_true", help="Use spectral normalization in D")
+    parser.add_argument("--use_minibatch_discrim", action="store_true", help="Use minibatch discrimination in D")
     return parser.parse_args()
 
 class FloorPlanDataset(Dataset):
@@ -122,7 +125,9 @@ def train_wgan_gp(
     lr_g,
     lr_d,
     save_interval,
-    patience
+    patience,
+    use_spectral_norm=False,
+    use_minibatch_discrim=False
 ):
     # データ読み込み & Dataset作成
     layouts = load_and_augment_csvs(data_dir=data_dir, do_augmentation=True)
@@ -143,23 +148,27 @@ def train_wgan_gp(
         out_channels=real_out_channels
     ).to(device)
 
-    # Discriminator
+    # Discriminator (拡張)
     netD = Discriminator(
         in_channels=real_out_channels,
         cond_dim=cond_dim,
-        base_channels=64
+        base_channels=64,
+        use_spectral_norm=use_spectral_norm,
+        use_minibatch=use_minibatch_discrim
     ).to(device)
 
     # 学習率/optimizer設定 (betas=(0.5,0.999))
-    optG = optim.Adam(netG.parameters(), lr=lr_g, betas=(0.5, 0.999))
-    optD = optim.Adam(netD.parameters(), lr=lr_d, betas=(0.5, 0.999))
+    optG = optim.Adam(netG.parameters(), lr=lr_g, betas=(0.5,0.999))
+    optD = optim.Adam(netD.parameters(), lr=lr_d, betas=(0.5,0.999))
 
     # 学習率スケジューラ(ReduceLROnPlateau)は任意
     schedulerG = optim.lr_scheduler.ReduceLROnPlateau(optG, mode='min', factor=0.5, patience=10)
     schedulerD = optim.lr_scheduler.ReduceLROnPlateau(optD, mode='min', factor=0.5, patience=10)
 
-    gp_lambda = 5.0  # (10.0→5.0 に変更)
+    gp_lambda = 5.0  # 勾配ペナルティ係数
     early_stopper = EarlyStopping(patience=patience, min_delta=0.0)
+
+    print(f"[INFO] Start Training with spectral_norm={use_spectral_norm}, minibatch_discrim={use_minibatch_discrim}")
 
     for ep in range(1, epochs+1):
         g_losses = []
@@ -237,7 +246,6 @@ def train_wgan_gp(
                 # 文字列変換
                 gen_list_str = [arr.astype(str) for arr in gen_samples]
 
-                # 複数のOR条件 [OPTION_R, OPTION_C]
                 eval_res = evaluate_generated_layouts(gen_list_str,
                                                       REQUIRED_ROOMS,
                                                       [OPTION_R, OPTION_C])
@@ -268,7 +276,9 @@ def main():
         lr_g=args.lr_g,
         lr_d=args.lr_d,
         save_interval=args.save_interval,
-        patience=args.patience
+        patience=args.patience,
+        use_spectral_norm=args.use_spectral_norm,
+        use_minibatch_discrim=args.use_minibatch_discrim
     )
 
 if __name__ == "__main__":
