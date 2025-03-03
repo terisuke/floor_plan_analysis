@@ -21,6 +21,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+# 研究メモ
+data.md
 
 # IDEやエディタの設定ファイル
 .vscode/

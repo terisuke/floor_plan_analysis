@@ -147,7 +147,7 @@ def train_wgan_gp(
     netG = Generator(
         noise_dim=noise_dim,
         cond_dim=cond_dim,
-        base_channels=64,
+        base_channels=96,
         out_channels=real_out_channels
     ).to(device)
 

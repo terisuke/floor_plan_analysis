@@ -14,11 +14,12 @@ import os
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @st.cache_resource
-def load_cgan_generator(ckpt_path, noise_dim=NOISE_DIM, cond_dim=COND_DIM, out_channels=OUT_CHANNELS):
+def load_cgan_generator(ckpt_path, noise_dim=NOISE_DIM, cond_dim=COND_DIM, out_channels=23):
     netG = Generator(
         noise_dim=noise_dim, 
         cond_dim=cond_dim, 
-        out_channels=out_channels
+        out_channels=out_channels,
+        base_channels=96  # チェックポイントと一致するように修正（96->192->384->768の順）
     )
     netG.load_state_dict(torch.load(ckpt_path, map_location=device))
     netG.eval().to(device)
