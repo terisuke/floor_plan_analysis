@@ -13,7 +13,7 @@ H, W = 32, 32
 num_classes = 5
 
 # -------------------------------
-# FID計算関連 (変わらず)
+# FID計算関連
 # -------------------------------
 def compute_fid_score(real_array, gen_array):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,7 +60,7 @@ def compute_fid_score(real_array, gen_array):
 # -------------------------------
 def check_required_rooms(generated_layout, required_rooms):
     """
-    generated_layout: 2次元配列 (H',W') 各セルが部屋ラベル(str)
+    generated_layout: 2次元配列(H',W'), 各セルが部屋ラベル(str)
     required_rooms: ["l","d","k","t","b"] のように絶対必要な部屋リスト
     戻り値: bool (全て含まれていればTrue)
     """
@@ -73,14 +73,14 @@ def check_required_rooms(generated_layout, required_rooms):
 def check_multiple_or_rooms(generated_layout, or_room_sets):
     """
     generated_layout: 2次元配列
-    or_room_sets: 複数の OR 条件をリストで指定する
-      例: [ ["r","r1"], ["c","c1"] ] 
-         => (r or r1) かつ (c or c1) の両方が満たされる必要がある
+    or_room_sets: 複数の OR 条件をリストで指定
+      例: [ ["r","r1"], ["c","c1"] ]
+         => (r or r1) かつ (c or c1) が必要
     戻り値: bool
     """
     found = set(generated_layout.reshape(-1))
     for or_rooms in or_room_sets:
-        # or_rooms のいずれか一つが found にあればOK
+        # いずれか一つが含まれていればOK
         if not any(r in found for r in or_rooms):
             return False
     return True
@@ -90,12 +90,12 @@ def check_multiple_or_rooms(generated_layout, or_room_sets):
 # -------------------------------
 def check_connectivity_constraints(generated_layout):
     """
-    例: co が全体の5%未満ならNG、など簡単なチェック
+    例: co が全体の5%未満ならNG、などの簡易チェック
     """
     h, w = generated_layout.shape
-    total_cells = h*w
+    total_cells = h * w
     co_count = np.sum(generated_layout == 'co')
-    if co_count < total_cells*0.05:
+    if co_count < total_cells * 0.05:
         return False
     return True
 
@@ -104,17 +104,10 @@ def check_connectivity_constraints(generated_layout):
 # -------------------------------
 def evaluate_generated_layouts(gen_array, required_rooms, or_room_sets=None):
     """
-    gen_array: list of 2D layouts or (N, H, W) np.array
-    required_rooms: 絶対必要な部屋リスト (例: ["l","d","k","t","b"])
-    or_room_sets: OR条件の部屋集合を複数指定
-      例: [ ["r","r1"], ["c","c1"] ]
-         => (r or r1) かつ (c or c1) が必要
-    戻り値: dict
-      {
-        "total_samples": int,
-        "num_rooms_ok": int,
-        "num_constraints_ok": int
-      }
+    gen_array: list of 2D layouts, 各要素は (H, W) np.array
+    required_rooms: ["l","d","k","t","b"] 等
+    or_room_sets: OR条件の部屋集合を指定(例: [ ["r","r1"], ["c","c1"] ])
+    戻り値: dict {"total_samples", "num_rooms_ok", "num_constraints_ok"}
     """
     results = {
         "total_samples": len(gen_array),
@@ -125,17 +118,14 @@ def evaluate_generated_layouts(gen_array, required_rooms, or_room_sets=None):
     for layout in gen_array:
         # (1) 必須部屋チェック
         if not check_required_rooms(layout, required_rooms):
-            # ダメなら部屋OKにカウントしない
             pass
         else:
-            # 必須部屋はOK => あとは OR 部屋のチェック
+            # 必須部屋が揃ったら OR部屋チェック
             if or_room_sets is not None:
-                # すべてのORセットを満たすか？
                 if check_multiple_or_rooms(layout, or_room_sets):
-                    # OK
                     results["num_rooms_ok"] += 1
             else:
-                # OR条件がない場合はこれで部屋OK
+                # OR条件なし
                 results["num_rooms_ok"] += 1
 
         # (2) 接続・制約チェック
@@ -145,7 +135,7 @@ def evaluate_generated_layouts(gen_array, required_rooms, or_room_sets=None):
     return results
 
 # -------------------------------
-# (以下、スクリプト実行時: FID計算サンプル)
+# (以下、スクリプト実行時のテスト)
 # -------------------------------
 if __name__ == "__main__":
     # 例: FIDを計算
@@ -162,10 +152,9 @@ if __name__ == "__main__":
         print("FIDスコア計算時のエラー:", e)
 
     # 例: 必須部屋 & ORセットの評価
-    required_rooms_ex = ["l","d","k","b","t"]  # たとえば
+    required_rooms_ex = ["l","d","k","b","t"]
     or_sets_ex = [ ["r","r1"], ["c","c1"] ]
-
     # ダミーの生成結果を仮定
-    # gen_array_ex = [ ... ]
+    # gen_array_ex = [...]
     # evaluate_results = evaluate_generated_layouts(gen_array_ex, required_rooms_ex, or_sets_ex)
     # print(evaluate_results)

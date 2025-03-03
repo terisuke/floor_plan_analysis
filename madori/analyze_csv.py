@@ -4,28 +4,32 @@ import pandas as pd
 from collections import defaultdict, deque
 
 # CSV上の部屋コード → config.py上のキー へのマッピング例
+# ldk は不要 (CSVで既に l, d, k に分割済み)
 CSV_TO_CONFIG_MAP = {
-    "l": "l",     # リビング
-    "d": "d",     # ダイニング
-    "k": "k",     # キッチン
-    "r": "r",     # 部屋
-    "r1": "r1",   # 部屋1
-    "r2": "r2",   # 部屋2
-    "r3": "r3",   # 部屋3
-    "r4": "r4",   # 部屋4
-    "t": "t",     # トイレ
-    "b": "b",     # 風呂
-    "c": "c",     # クローゼット
-    "c1": "c1",   # クローゼット1
-    "c2": "c2",   # クローゼット2
-    "c3": "c3",   # クローゼット3
-    "c4": "c4",   # クローゼット4
-    "s": "s",     # 階段
-    "e": "e",     # 玄関
-    "H": "H",     # ホール
-    "co": "co",   # 廊下
-    "ut": "ut",   # 脱衣所
-    # "ldk": → 必要に応じて l,d,k に分割する等
+    "l": "l",      # リビング
+    "d": "d",      # ダイニング
+    "k": "k",      # キッチン
+    "r": "r",      # 部屋
+    "r1": "r1",    # 部屋1
+    "r2": "r2",    # 部屋2
+    "r3": "r3",    # 部屋3
+    "r4": "r4",    # 部屋4
+    "t": "t",      # トイレ
+    "b": "b",      # 風呂
+    "c": "c",      # クローゼット
+    "c1": "c1",
+    "c2": "c2",
+    "c3": "c3",
+    "c4": "c4",
+    "s": "s",      # 階段
+    "e": "e",      # 玄関
+    "H": "H",      # ホール (大文字のまま扱う)
+    "BL": "BL",    # バルコニー (大文字)
+    "co": "co",    # 廊下
+    "ut": "ut",    # 脱衣所
+    "ts": "ts",    # テレワークスペース
+    "sc": "sc",    # シューズインクローゼット
+    # ほか必要があれば追加
 }
 
 def analyze_1f_csv(data_1f_dir="data/1F"):
@@ -34,6 +38,7 @@ def analyze_1f_csv(data_1f_dir="data/1F"):
         print(f"No CSV files found in {data_1f_dir}")
         return
 
+    from collections import defaultdict
     code_blocks = defaultdict(list)
 
     for filepath in csv_files:
@@ -51,9 +56,9 @@ def analyze_1f_csv(data_1f_dir="data/1F"):
                 if val == "" or val == ".":
                     row_list.append(".")
                 else:
-                    lower_val = val.lower()
-                    if lower_val in CSV_TO_CONFIG_MAP:
-                        row_list.append(CSV_TO_CONFIG_MAP[lower_val])
+                    # ここでは小文字化しない
+                    if val in CSV_TO_CONFIG_MAP:
+                        row_list.append(CSV_TO_CONFIG_MAP[val])
                     else:
                         row_list.append(".")
             normalized_grid.append(row_list)
@@ -67,6 +72,7 @@ def analyze_1f_csv(data_1f_dir="data/1F"):
                     yield nr, nc
 
         # BFSで同じコードの塊を探索
+        from collections import deque
         for rr in range(rows):
             for cc in range(cols):
                 if normalized_grid[rr][cc] != "." and not visited[rr][cc]:
