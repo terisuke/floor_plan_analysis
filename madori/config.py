@@ -12,9 +12,9 @@ ROOMS = {
     "t":  {"name": "トイレ",     "size": (1, 3),  "adjacent_to": ["b","ut"]},
 
     # ホール(1,6)
-    "h":  {"name": "ホール",     "size": (1, 6),  "adjacent_to": ["e"]},
+    "H":  {"name": "ホール",     "size": (1, 6),  "adjacent_to": ["e"]},
     # 玄関(1,8)
-    "e":  {"name": "玄関",       "size": (1, 8),  "adjacent_to": ["h"]},
+    "e":  {"name": "玄関",       "size": (1, 8),  "adjacent_to": ["H"]},
 
     # クローゼット(1,6)
     "c":  {"name": "クローゼット","size": (1, 6), "adjacent_to": []},

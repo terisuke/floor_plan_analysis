@@ -30,6 +30,81 @@ data/
       └── ...
 ```
 
+## データ確認ツール
+
+CSVデータの内容を確認するためのツールが用意されています：
+
+```bash
+python3 list_1f_data.py [オプション]
+```
+
+### オプション
+
+- `-h, --help`：ヘルプメッセージを表示
+- `-d DIR, --dir DIR`：データディレクトリのパス（デフォルト: data/1F）
+- `-n NUM, --num NUM`：表示するファイル数（デフォルト: 5、0で全件表示）
+- `-p PATTERN, --pattern PATTERN`：ファイル名のパターン（例: "2042"）
+- `-a, --all`：全てのファイルを表示（-n 0と同じ）
+
+### 使用例
+
+1. 最初の5件のファイルを表示：
+   ```bash
+   python3 list_1f_data.py
+   ```
+
+2. 特定のパターンを含むファイルだけを表示：
+   ```bash
+   python3 list_1f_data.py -p 2042
+   ```
+
+3. すべてのファイルを表示：
+   ```bash
+   python3 list_1f_data.py -a
+   ```
+
+## main.pyの実行
+
+`main.py`は間取りデータの基本的な分析と、学習済みモデルによる間取り生成を行います：
+
+```bash
+python3 main.py
+```
+
+`main.py`の主な機能：
+1. CSVファイルの読み込みと基本情報の表示
+2. `data/1F`ディレクトリのCSV解析とコード単位での統計情報表示
+3. 学習済みcGANモデルによる間取り生成とプロット表示
+
+詳細は以下のコードを参照してください：
+
+```python
+# メイン処理
+if __name__ == "__main__":
+    # 1) CSVファイルを読み込み確認
+    data_dir = "data"
+    file_paths = glob.glob(os.path.join(data_dir, "*.csv"))
+    for fp in file_paths:
+        print(f"\n--- Processing {fp} ---")
+        df = load_madori_data(fp)
+        if df is not None:
+            print("\nData (First 5 rows):")
+            print(df.head())
+            print("\nData Shape:", df.shape)
+
+    # 2) 1FのCSV解析(元々の分析用)
+    print("\n=== Analyzing 1F CSV files to propose config changes ===")
+    analyze_1f_csv("data/1F")
+
+    # 3) 学習済みモデルを使って間取りを予測 (GAN)
+    print("\n=== Generating floor plans with the trained cGAN model ===")
+    floors = predict_floorplans(num_samples=2, cond_value=0.2, gen_path="models/generator_ep100.pth")
+
+    for i, floor_2d in enumerate(floors):
+        print(f"[Generated {i}] shape={floor_2d.shape}")
+        plot_madori(floor_2d.astype(str))
+```
+
 ## GANモデルの学習
 
 1. 以下のコマンドで間取りGANの学習を開始します：
